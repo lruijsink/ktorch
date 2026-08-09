@@ -9,8 +9,7 @@ import kotlin.math.max
 class Tensor(
     val shape: IntArray,
     val stride: IntArray,
-    val primitiveType: PrimitiveType,
-    val device: Device,
+    val backend: Backend,
     val storage: Storage,
     val storageOffset: Long,
 ) {
@@ -35,32 +34,31 @@ class Tensor(
     }
 
     fun contiguous(): Tensor =
-        if (isContiguous) this else device.clone(this)
+        if (isContiguous) this else backend.clone(this)
 
     fun clone(): Tensor =
-        device.clone(this)
+        backend.clone(this)
 
     operator fun unaryPlus(): Tensor =
         clone()
 
     operator fun unaryMinus(): Tensor =
-        device.neg(this)
+        backend.neg(this)
 
     operator fun plus(other: Tensor): Tensor =
-        binaryOperator(other, device::add)
+        binaryOperator(other, backend::add)
 
     operator fun minus(other: Tensor): Tensor =
-        binaryOperator(other, device::sub)
+        binaryOperator(other, backend::sub)
 
     operator fun times(other: Tensor): Tensor =
-        binaryOperator(other, device::mul)
+        binaryOperator(other, backend::mul)
 
     operator fun div(other: Tensor): Tensor =
-        binaryOperator(other, device::div)
+        binaryOperator(other, backend::div)
 
     private fun binaryOperator(other: Tensor, op: (Tensor, Tensor) -> Tensor): Tensor {
-        require(device == other.device) { "tensors must be on the same device" }
-        require(primitiveType == other.primitiveType) { "tensors must have the same primitive type" }
+        require(backend == other.backend) { "tensors must use the same backend" }
         val (a, b) = this.broadcastAgainst(other)
         return op(a, b)
     }
@@ -78,8 +76,8 @@ class Tensor(
         div(matchToScalar(number))
 
     private fun matchToScalar(value: Number): Tensor =
-        when (primitiveType) {
-            PrimitiveType.F32 -> tensor(value.toFloat(), device)
+        when (backend.primitiveType) {
+            PrimitiveType.F32 -> tensor(value.toFloat(), backend)
             PrimitiveType.F64 -> TODO("F64 scalar matching not supported yet")
         }
 
@@ -98,15 +96,15 @@ class Tensor(
                 newStride[i] = stride[iSrc]
             }
         }
-        return Tensor(targetShape, newStride, primitiveType, device, storage, storageOffset)
+        return Tensor(targetShape, newStride, backend, storage, storageOffset)
     }
 
     override fun toString(): String {
-        val buff = ByteBuffer.allocate(storage.capacity.toInt())
+        val buff = ByteBuffer.allocate(storage.capacity.toInt() * backend.primitiveType.sizeBytes)
         storage.copyInto(buff)
         buff.rewind()
 
-        val nums: List<Number> = when (primitiveType) {
+        val nums: List<Number> = when (backend.primitiveType) {
             PrimitiveType.F32 -> {
                 val elements = FloatArray(numElements.toInt())
                 buff.asFloatBuffer().get(elements)
@@ -163,6 +161,24 @@ class Tensor(
  */
 operator fun Number.times(tensor: Tensor): Tensor =
     tensor.times(this)
+
+/**
+ * Elementwise `exp`
+ */
+fun exp(tensor: Tensor): Tensor =
+    tensor.backend.exp(tensor)
+
+/**
+ * Elementwise `ln`
+ */
+fun ln(tensor: Tensor): Tensor =
+    tensor.backend.ln(tensor)
+
+/**
+ * Elementwise `sqrt`
+ */
+fun sqrt(tensor: Tensor): Tensor =
+    tensor.backend.sqrt(tensor)
 
 /**
  * Compute what the resulting shape would be after broadcasting [a] and [b] against each other

@@ -1,15 +1,20 @@
 package io.github.lruijsink.ktorch
 
-import io.github.lruijsink.ktorch.cpu.CPU
+import io.github.lruijsink.ktorch.cpu.f32.F32CPU
 
 /**
  * Compute device
  */
-interface Device {
+interface Backend {
     /**
-     * Allocate [size] bytes
+     * Primitive type used by this backend
      */
-    fun allocate(size: Long): Storage
+    val primitiveType: PrimitiveType
+
+    /**
+     * Allocate [capacity] elements, size in bytes depends on [primitiveType]
+     */
+    fun allocate(capacity: Long): Storage
 
     /**
      * Copy a tensor, preserving its shape and stride
@@ -40,9 +45,24 @@ interface Device {
      * Elementwise division over two tensors
      */
     fun div(a: Tensor, b: Tensor): Tensor
+
+    /**
+     * Elementwise `exp`
+     */
+    fun exp(t: Tensor): Tensor
+
+    /**
+     * Elementwise `ln`
+     */
+    fun ln(t: Tensor): Tensor
+
+    /**
+     * Elementwise `sqrt`
+     */
+    fun sqrt(t: Tensor): Tensor
 }
 
 /**
- * Default compute device (CPU)
+ * Default compute backend
  */
-val DEFAULT_DEVICE: Device = CPU
+val DEFAULT_BACKEND: Backend = F32CPU

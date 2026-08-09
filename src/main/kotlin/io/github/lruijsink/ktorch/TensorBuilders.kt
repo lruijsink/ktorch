@@ -5,19 +5,19 @@ import java.nio.FloatBuffer
 /**
  * Create a rank N tensor from rank N-1 slices on the device
  */
-fun tensor(slices: Array<Tensor>, device: Device = DEFAULT_DEVICE): Tensor {
+fun tensor(vararg slices: Tensor): Tensor {
     if (slices.isEmpty()) return emptyTensor()
 
+    val backend = slices[0].backend
     val sliceShape = slices[0].shape
-    val primitiveType = slices[0].primitiveType
     require(slices.all { it.shape.contentEquals(sliceShape) }) { "slices must have equal shapes" }
-    require(slices.all { it.primitiveType == primitiveType }) { "slices must have the same primitive type" }
+    require(slices.all { it.backend == backend }) { "slices must use the same backend" }
 
     val numElements = slices.size * slices[0].numElements
     val shape = intArrayOf(slices.size) + sliceShape
     val stride = contiguousStride(shape)
 
-    val storage = device.allocate(primitiveType.sizeBytes * numElements)
+    val storage = backend.allocate(numElements)
     storage.write { buffer ->
         for (slice in slices) {
             if (slice.isContiguous) {
@@ -31,19 +31,11 @@ fun tensor(slices: Array<Tensor>, device: Device = DEFAULT_DEVICE): Tensor {
     return Tensor(
         shape = shape,
         stride = stride,
-        primitiveType = primitiveType,
-        device = device,
+        backend = backend,
         storage = storage,
         storageOffset = 0,
     )
 }
-
-/**
- * Create a rank N tensor from rank N-1 slices on the device
- */
-fun tensor(vararg slices: Tensor): Tensor =
-    @Suppress("UNCHECKED_CAST", "KotlinConstantConditions")
-    tensor(slices as Array<Tensor>, DEFAULT_DEVICE)
 
 /**
  * Create an empty tensor
@@ -52,8 +44,7 @@ fun tensor(): Tensor =
     Tensor(
         shape = intArrayOf(),
         stride = intArrayOf(),
-        primitiveType = PrimitiveType.F32, // irrelevant
-        device = DEFAULT_DEVICE, // irrelevant
+        backend = DEFAULT_BACKEND,
         storage = NoopStorage,
         storageOffset = 0,
     )
@@ -68,38 +59,37 @@ fun emptyTensor(): Tensor =
 // F32 specializations
 // ================================================================================
 
-private fun tensorF32(shape: IntArray, device: Device = DEFAULT_DEVICE, write: (FloatBuffer) -> Unit): Tensor {
+private fun tensorF32(shape: IntArray, backend: Backend = DEFAULT_BACKEND, write: (FloatBuffer) -> Unit): Tensor {
     val numElements = shape.fold(1) { a, b -> a * b }
-    val storage = device.allocate(numElements * Float.SIZE_BYTES.toLong())
+    val storage = backend.allocate(numElements.toLong())
     storage.write { write(it.asFloatBuffer()) }
 
     return Tensor(
         shape = shape,
         stride = contiguousStride(shape),
-        device = device,
+        backend = backend,
         storage = storage,
         storageOffset = 0,
-        primitiveType = PrimitiveType.F32,
     )
 }
 
 /**
  * Create a 0-dimensional scalar tensor on the device
  */
-fun tensor(value: Float, device: Device = DEFAULT_DEVICE): Tensor =
-    tensorF32(intArrayOf(), device) { it.put(value) }
+fun tensor(value: Float, backend: Backend = DEFAULT_BACKEND): Tensor =
+    tensorF32(intArrayOf(), backend) { it.put(value) }
 
 /**
  * Create a 1-dimensional vector tensor on the device
  */
-fun tensor(elements: FloatArray, device: Device = DEFAULT_DEVICE): Tensor =
-    tensorF32(intArrayOf(elements.size), device) { it.put(elements) }
+fun tensor(elements: FloatArray, backend: Backend = DEFAULT_BACKEND): Tensor =
+    tensorF32(intArrayOf(elements.size), backend) { it.put(elements) }
 
 /**
  * Create a scalar tensor on the device, set to [value], equivalent to `device.tensor(value)`
  */
-fun scalar(value: Float, device: Device = DEFAULT_DEVICE): Tensor =
-    tensor(value, device)
+fun scalar(value: Float, backend: Backend = DEFAULT_BACKEND): Tensor =
+    tensor(value, backend)
 
 /**
  * Create a 1-dimensional vector tensor on the device
