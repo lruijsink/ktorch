@@ -96,12 +96,59 @@ class Tensor(
                 newStride[i] = stride[iSrc]
             }
         }
-        return Tensor(targetShape, newStride, backend, storage, storageOffset)
+        return Tensor(
+            shape = targetShape,
+            stride = newStride,
+            backend = backend,
+            storage = storage,
+            storageOffset = storageOffset,
+        )
     }
 
+    fun permute(vararg dims: Int): Tensor {
+        require(dims.sorted().withIndex().all { (i, v) -> v == i }) { "must be a valid permutation of 0..dimensions-1" }
+        return Tensor(
+            shape = dims.map { shape[it] }.toIntArray(),
+            stride = stride.map { stride[it] }.toIntArray(),
+            backend = backend,
+            storage = storage,
+            storageOffset = storageOffset,
+        )
+    }
+
+    fun transpose(dim1: Int, dim2: Int): Tensor {
+        require(dim1 in 0 until dimensions) { "dimension $dim1 is not in range (0 until $dimensions)" }
+        require(dim2 in 0 until dimensions) { "dimension $dim2 is not in range (0 until $dimensions)" }
+
+        val newShape = shape.copyOf()
+        newShape[dim1] = shape[dim2]
+        newShape[dim2] = shape[dim1]
+
+        val newStride = stride.copyOf()
+        newStride[dim1] = stride[dim2]
+        newStride[dim2] = stride[dim1]
+
+        return Tensor(
+            shape = newShape,
+            stride = newStride,
+            backend = backend,
+            storage = storage,
+            storageOffset = storageOffset,
+        )
+    }
+
+    fun t(): Tensor {
+        require(dimensions == 2) { "t() requires a matrix" }
+        return transpose(0, 1)
+    }
+
+    @Suppress("PropertyName")
+    val T get(): Tensor = t()
+
     override fun toString(): String {
-        val buff = ByteBuffer.allocate(storage.capacity.toInt() * backend.primitiveType.sizeBytes)
-        storage.copyInto(buff)
+        val t = contiguous()
+        val buff = ByteBuffer.allocate(t.numElements.toInt() * backend.primitiveType.sizeBytes)
+        t.storage.copyInto(buff, sourceOffset = t.storageOffset, length = t.numElements)
         buff.rewind()
 
         val nums: List<Number> = when (backend.primitiveType) {
